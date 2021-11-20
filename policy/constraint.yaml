@@ -1,0 +1,12 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sExternalData
+metadata:
+  name: dummy
+spec:
+  enforcementAction: deny
+  match:
+    namespaces:
+      - default
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
