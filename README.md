@@ -19,7 +19,7 @@ Let's install the `cosign-gatekeeper-provider`:
 
  `kubectl apply -f manifest`
 
-- `kubectl apply -f policy/provider.yaml`
+- `kubectl apply -f manifest/provider.yaml`
   - > Update `url` if it's not `http://cosign-gatekeeper-provider.cosign-gatekeeper-provider:8090` (default)
 
 - `kubectl apply -f policy/template.yaml`
