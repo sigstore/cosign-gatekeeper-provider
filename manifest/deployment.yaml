@@ -1,27 +1,27 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: dummy-provider
+  name: cosign-gatekeeper-provider
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dummy-provider
-  namespace: dummy-provider
+  name: cosign-gatekeeper-provider
+  namespace: cosign-gatekeeper-provider
 spec:
   replicas: 1
   selector:
     matchLabels:
-      run: dummy-provider
+      run: cosign-gatekeeper-provider
   template:
     metadata:
       labels:
-        run: dummy-provider
+        run: cosign-gatekeeper-provider
     spec:
       containers:
       - image: devopps/cosign-gatekeeper-provider:latest
-        imagePullPolicy: Never
-        name: dummy-provider
+        imagePullPolicy: IfNotPresent
+        name: cosign-gatekeeper-provider
         ports:
         - containerPort: 8090
           protocol: TCP

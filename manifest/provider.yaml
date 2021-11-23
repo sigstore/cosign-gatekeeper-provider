@@ -1,7 +1,7 @@
 apiVersion: externaldata.gatekeeper.sh/v1alpha1
 kind: Provider
 metadata:
-  name: dummy-provider
+  name: cosign-gatekeeper-provider
 spec:
-  url: http://dummy-provider.dummy-provider:8090/validate
+  url: http://cosign-gatekeeper-provider.cosign-gatekeeper-provider:8090/validate
   timeout: 30

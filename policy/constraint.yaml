@@ -1,7 +1,7 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sExternalData
+kind: K8sExternalDataCosign
 metadata:
-  name: dummy
+  name: cosign-gatekeeper-provider
 spec:
   enforcementAction: deny
   match:
