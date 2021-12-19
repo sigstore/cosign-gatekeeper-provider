@@ -1,0 +1,23 @@
+name: Verify
+
+on: [push, pull_request]
+
+jobs:
+  license-check:
+    name: license boilerplate check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.17.x'
+
+      - name: Install addlicense
+        run: go install github.com/google/addlicense@latest
+
+      - name: Check license headers
+        run: |
+          set -e
+          addlicense --check -ignore **/*.yml -ignore **/*.yaml -ignore Dockerfile  -l apache -c 'The Sigstore Authors' -v *
