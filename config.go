@@ -61,6 +61,9 @@ type Verifier struct {
 	// Supports '*' and '?' in the pattern string.
 	Image string `yaml:"image,omitempty"`
 
+	// AttestationPresent is a boolean to specify whether an attestation is expected to be present
+	AttestationPresent bool `yaml:"attestationPresent,omitempty"`
+
 	// Options defines verification options
 	Options *CheckOptions `yaml:"options,omitempty"`
 }
@@ -90,7 +93,4 @@ type CheckOptions struct {
 
 	// RekorURL is the address of a rekor STL server
 	RekorURL string `yaml:"rekor_url,omitempty"`
-
-	// AttestationPresent is a boolean to specify whether an attestation is expected to be present
-	AttestationPresent bool `yaml:"attestationPresent,omitempty"`
 }

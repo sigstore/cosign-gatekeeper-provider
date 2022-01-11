@@ -171,7 +171,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		fmt.Println("signature verified for: ", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
 
-		if o.Options.AttestationPresent {
+		if o.AttestationPresent {
 			fmt.Println("Verifying Attestations for image: ", key)
 
 			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
