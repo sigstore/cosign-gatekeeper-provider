@@ -175,7 +175,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			if err != nil {
 				return nil, fmt.Errorf("VerifyImageAttestations: %v", err)
 			}
-			if !bundleVerified {
+			if co.RekorClient != nil && !bundleVerified {
 				return nil, fmt.Errorf("no valid attestations found for: %s", key)
 			}
 
