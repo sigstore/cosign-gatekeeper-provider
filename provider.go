@@ -158,9 +158,6 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		if co.RekorClient != nil && !bundleVerified {
 			return nil, fmt.Errorf("no valid signatures found for %s: %v", key, err)
 		}
-		if !bundleVerified {
-			return nil, fmt.Errorf("no valid signatures found for: %s", key)
-		}
 
 		if len(checkedSignatures) == 0 {
 			return nil, fmt.Errorf("no valid signatures found for %s", key)
