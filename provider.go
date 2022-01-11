@@ -148,8 +148,23 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			return fmt.Errorf("no valid signatures found for: %s", key)
 		}
 
-		fmt.Println("signature verified for:", key)
+		fmt.Println("signature verified for: ", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
+
+		if o.Options.AttestationPresent {
+			fmt.Println("Verifying Attestations for image: ", key)
+
+			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
+			if err != nil {
+				return fmt.Errorf("VerifyImageAttestations: %v", err)
+			}
+			if !bundleVerified {
+				return fmt.Errorf("no valid attestations found for: ", key)
+			}
+
+			fmt.Println("attestation verified for: ", key)
+			fmt.Printf("%d number of valid atttestations found for %s, found attetations: %v\n")
+		}
 
 		return nil
 	}

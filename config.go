@@ -91,4 +91,7 @@ type CheckOptions struct {
 
 	// RekorURL is the address of a rekor STL server
 	RekorURL string `yaml:"rekor_url,omitempty"`
+
+	// AttestationPresent is a boolean to specify whether an attestation is expected to be present
+	AttestationPresent bool `yaml:"attestationPresent,omitempty"`
 }
