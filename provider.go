@@ -106,7 +106,7 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 
 type CheckedMetadata struct {
 	ImageSignatures       []oci.Signature `json:"imageSignatures"`
-	AttestationSignatures []oci.Signature `json:"AttestationSignatures"`
+	AttestationSignatures []oci.Signature `json:"attestationSignatures"`
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*CheckedMetadata, error) {
