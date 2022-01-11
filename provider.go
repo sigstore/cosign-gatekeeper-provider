@@ -15,7 +15,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -23,94 +25,141 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
 
+	"github.com/minio/pkg/wildcard"
 	"github.com/sigstore/cosign/cmd/cosign/cli/fulcio"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/cmd/cosign/cli/rekor"
 	"github.com/sigstore/cosign/pkg/cosign"
+	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
+	sigs "github.com/sigstore/cosign/pkg/signature"
 )
 
 const (
 	apiVersion = "externaldata.gatekeeper.sh/v1alpha1"
 )
 
+var (
+	configFile = flag.String("config-file", "", "path to a configuration file")
+)
+
 func main() {
+	flag.Parse()
+
+	cfg, err := LoadConfig(*configFile)
+	if err != nil {
+		panic(err)
+	}
+
 	fmt.Println("starting server...")
-	http.HandleFunc("/validate", validate)
+	http.HandleFunc("/validate", validate(cfg))
 
 	if err := http.ListenAndServe(":8090", nil); err != nil {
 		panic(err)
 	}
 }
 
-func validate(w http.ResponseWriter, req *http.Request) {
-	// only accept POST requests
-	if req.Method != http.MethodPost {
-		sendResponse(nil, "only POST is allowed", w)
-		return
+func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+		// only accept POST requests
+		if req.Method != http.MethodPost {
+			sendResponse(nil, "only POST is allowed", w)
+			return
+		}
+
+		// read request body
+		requestBody, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			sendResponse(nil, fmt.Sprintf("unable to read request body: %v", err), w)
+			return
+		}
+
+		// parse request body
+		var providerRequest externaldata.ProviderRequest
+		err = json.Unmarshal(requestBody, &providerRequest)
+		if err != nil {
+			sendResponse(nil, fmt.Sprintf("unable to unmarshal request body: %v", err), w)
+			return
+		}
+
+		results := make([]externaldata.Item, 0)
+
+		ctx := req.Context()
+
+		// iterate over all keys
+		for _, key := range providerRequest.Request.Keys {
+			result := externaldata.Item{
+				Key: key,
+			}
+			fmt.Println("verify signature for:", key)
+			if err := verifyImageSignatures(ctx, key, cfg.Verifiers); err != nil {
+				result.Error = err.Error()
+			}
+			results = append(results, result)
+		}
+
+		sendResponse(&results, "", w)
 	}
+}
 
-	// read request body
-	requestBody, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("unable to read request body: %v", err), w)
-		return
-	}
+func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) error {
+	for _, o := range verifiers {
+		if !wildcard.Match(o.Image, key) {
+			continue
+		}
 
-	// parse request body
-	var providerRequest externaldata.ProviderRequest
-	err = json.Unmarshal(requestBody, &providerRequest)
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("unable to unmarshal request body: %v", err), w)
-		return
-	}
+		ro := options.RegistryOptions{}
+		ociremoteOpts, err := ro.ClientOpts(ctx)
+		if err != nil {
+			return err
+		}
+		co := &cosign.CheckOpts{
+			RegistryClientOpts: ociremoteOpts,
+			RootCerts:          fulcio.GetRoots(),
+		}
+		if o.Options.RekorURL != "" {
+			rekorClient, err := rekor.NewClient(o.Options.RekorURL)
+			if err != nil {
+				return fmt.Errorf("rekor.NewClient: %v", err)
+			}
+			co.RekorClient = rekorClient
+		}
+		if o.Options.Key != "" {
+			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
+			if err != nil {
+				return fmt.Errorf("PublicKeyFromKeyRef: %v", err)
+			}
+			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
+			if ok {
+				defer pkcs11Key.Close()
+			}
+			co.SigVerifier = pubKey
+		}
 
-	results := make([]externaldata.Item, 0)
-
-	ctx := req.Context()
-	ro := options.RegistryOptions{}
-	co, err := ro.ClientOpts(ctx)
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("ERROR: %v", err), w)
-		return
-	}
-
-	// iterate over all keys
-	for _, key := range providerRequest.Request.Keys {
-		fmt.Println("verify signature for:", key)
 		ref, err := name.ParseReference(key)
 		if err != nil {
-			sendResponse(nil, fmt.Sprintf("ERROR (ParseReference(%q)): %v", key, err), w)
-			return
+			return fmt.Errorf("ParseReference: %v", err)
 		}
 
-		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, &cosign.CheckOpts{
-			RekorURL:           "https://rekor.sigstore.dev",
-			RegistryClientOpts: co,
-			RootCerts:          fulcio.GetRoots(),
-		})
-
+		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 		if err != nil {
-			fmt.Println(err)
-			sendResponse(nil, fmt.Sprintf("VerifyImageSignatures: %v", err), w)
-			return
+			return fmt.Errorf("VerifyImageSignatures: %v", err)
 		}
 
-		if bundleVerified {
-			fmt.Println("signature verified for:", key)
-			fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
-			results = append(results, externaldata.Item{
-				Key:   key,
-				Value: key + "_valid",
-			})
-		} else {
-			fmt.Printf("no valid signatures found for: %s\n", key)
-			results = append(results, externaldata.Item{
-				Key:   key,
-				Error: key + "_invalid",
-			})
+		if co.RekorClient != nil && !bundleVerified {
+			return fmt.Errorf("no valid signatures found for %s: %v", key, err)
 		}
+
+		if len(checkedSignatures) == 0 {
+			return fmt.Errorf("no valid signatures found for %s", key)
+		}
+
+		fmt.Println("signature verified for:", key)
+		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
+
+		return nil
 	}
 
-	sendResponse(&results, "", w)
+	return fmt.Errorf("no verifier found for: %s", key)
 }
 
 // sendResponse sends back the response to Gatekeeper.
