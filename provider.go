@@ -31,6 +31,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/rekor"
 	"github.com/sigstore/cosign/pkg/cosign"
 	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
+	"github.com/sigstore/cosign/pkg/oci"
 	sigs "github.com/sigstore/cosign/pkg/signature"
 )
 
@@ -91,9 +92,11 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 				Key: key,
 			}
 			fmt.Println("verify signature for:", key)
-			if err := verifyImageSignatures(ctx, key, cfg.Verifiers); err != nil {
+			metadata, err := verifyImageSignatures(ctx, key, cfg.Verifiers)
+			if err != nil {
 				result.Error = err.Error()
 			}
+			result.Value = metadata
 			results = append(results, result)
 		}
 
@@ -101,7 +104,12 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) error {
+type CheckedMetadata struct {
+	ImageSignatures       []oci.Signature `json:"imageSignatures"`
+	AttestationSignatures []oci.Signature `json:"AttestationSignatures"`
+}
+
+func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*CheckedMetadata, error) {
 	for _, o := range verifiers {
 		if !wildcard.Match(o.Image, key) {
 			continue
@@ -110,7 +118,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		ro := options.RegistryOptions{}
 		ociremoteOpts, err := ro.ClientOpts(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		co := &cosign.CheckOpts{
 			RegistryClientOpts: ociremoteOpts,
@@ -119,14 +127,14 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		if o.Options.RekorURL != "" {
 			rekorClient, err := rekor.NewClient(o.Options.RekorURL)
 			if err != nil {
-				return fmt.Errorf("rekor.NewClient: %v", err)
+				return nil, fmt.Errorf("rekor.NewClient: %v", err)
 			}
 			co.RekorClient = rekorClient
 		}
 		if o.Options.Key != "" {
 			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
 			if err != nil {
-				return fmt.Errorf("PublicKeyFromKeyRef: %v", err)
+				return nil, fmt.Errorf("PublicKeyFromKeyRef: %v", err)
 			}
 			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
 			if ok {
@@ -137,24 +145,28 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		ref, err := name.ParseReference(key)
 		if err != nil {
-			return fmt.Errorf("ParseReference: %v", err)
+			return nil, fmt.Errorf("ParseReference: %v", err)
 		}
+
+		var metadata *CheckedMetadata
 
 		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 		if err != nil {
-			return fmt.Errorf("VerifyImageSignatures: %v", err)
+			return nil, fmt.Errorf("VerifyImageSignatures: %v", err)
 		}
 
 		if co.RekorClient != nil && !bundleVerified {
-			return fmt.Errorf("no valid signatures found for %s: %v", key, err)
+			return nil, fmt.Errorf("no valid signatures found for %s: %v", key, err)
 		}
 		if !bundleVerified {
-			return fmt.Errorf("no valid signatures found for: %s", key)
+			return nil, fmt.Errorf("no valid signatures found for: %s", key)
 		}
 
 		if len(checkedSignatures) == 0 {
-			return fmt.Errorf("no valid signatures found for %s", key)
+			return nil, fmt.Errorf("no valid signatures found for %s", key)
 		}
+
+		metadata.ImageSignatures = checkedSignatures
 
 		fmt.Println("signature verified for: ", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
@@ -164,20 +176,22 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
 			if err != nil {
-				return fmt.Errorf("VerifyImageAttestations: %v", err)
+				return nil, fmt.Errorf("VerifyImageAttestations: %v", err)
 			}
 			if !bundleVerified {
-				return fmt.Errorf("no valid attestations found for: ", key)
+				return nil, fmt.Errorf("no valid attestations found for: %s", key)
 			}
 
+			metadata.AttestationSignatures = checkedAttestations
+
 			fmt.Println("attestation verified for: ", key)
-			fmt.Printf("%d number of valid atttestations found for %s, found attetations: %v\n")
+			fmt.Printf("%d number of valid atttestations found for %s, found attetations: %v\n", len(checkedAttestations), key, checkedAttestations)
 		}
 
-		return nil
+		return metadata, nil
 	}
 
-	return fmt.Errorf("no verifier found for: %s", key)
+	return nil, fmt.Errorf("no verifier found for: %s", key)
 }
 
 // sendResponse sends back the response to Gatekeeper.
