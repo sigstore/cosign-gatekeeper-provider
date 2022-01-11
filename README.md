@@ -51,8 +51,7 @@ The provider can be configured with a configuration file passed with the
 `-config-file=<file>` flag.
 
 The verification options for specific image references can be configured by
-defining verifiers. The provider will use the first matching verifier that it
-finds.
+defining verifiers. 
 
 If a matching verifier can't be found then it will return an error for that image
 in the response.
@@ -69,6 +68,8 @@ verifiers:
     options:
       key: "/cosign.pub"
 
-  # Verify any other image with the default options
+  # Verify any other image with the rekor server
   - image: "*"
+    options:
+      rekorURL: "https://rekor.sigstore.dev"
 ```

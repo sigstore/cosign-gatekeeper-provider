@@ -90,6 +90,7 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 			result := externaldata.Item{
 				Key: key,
 			}
+			fmt.Println("verify signature for:", key)
 			if err := verifyImageSignatures(ctx, key, cfg.Verifiers); err != nil {
 				result.Error = err.Error()
 			}
@@ -102,8 +103,7 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) error {
 	for _, o := range verifiers {
-		// TODO: maybe don't use a random wildcard package from minio
-		if o.Image != "" && !wildcard.Match(o.Image, key) {
+		if !wildcard.Match(o.Image, key) {
 			continue
 		}
 
@@ -144,8 +144,16 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		if err != nil {
 			return fmt.Errorf("VerifyImageSignatures: %v", err)
 		}
+
+		if co.RekorClient != nil && !bundleVerified {
+			return fmt.Errorf("no valid signatures found for %s: %v", key, err)
+		}
 		if !bundleVerified {
 			return fmt.Errorf("no valid signatures found for: %s", key)
+		}
+
+		if len(checkedSignatures) == 0 {
+			return fmt.Errorf("no valid signatures found for %s", key)
 		}
 
 		fmt.Println("signature verified for: ", key)

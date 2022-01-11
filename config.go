@@ -13,9 +13,7 @@ var (
 		RekorURL: "https://rekor.sigstore.dev",
 	}
 
-	// DefaultConfig is the configuration used when none is provided. It
-	// verifies all images against the sigstore rekor server and the fulcio
-	// roots.
+	// DefaultConfig is the configuration used when none is provided
 	DefaultConfig = &Config{
 		Verifiers: []Verifier{
 			{
@@ -59,7 +57,8 @@ type Config struct {
 
 // Verifier verifies an image
 type Verifier struct {
-	// Image is an image reference, either to a specific image or a pattern
+	// Image is an image reference, either to a specific image or a pattern.
+	// Supports '*' and '?' in the pattern string.
 	Image string `yaml:"image,omitempty"`
 
 	// Options defines verification options
