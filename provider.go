@@ -182,7 +182,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			metadata.AttestationSignatures = checkedAttestations
 
 			fmt.Println("attestation verified for: ", key)
-			fmt.Printf("%d number of valid atttestations found for %s, found attetations: %v\n", len(checkedAttestations), key, checkedAttestations)
+			fmt.Printf("%d number of valid attestations found for %s, found attestations: %v\n", len(checkedAttestations), key, checkedAttestations)
 		}
 
 		return metadata, nil
