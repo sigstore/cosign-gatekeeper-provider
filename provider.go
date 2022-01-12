@@ -92,6 +92,7 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 			}
 			fmt.Println("verify signature for:", key)
 			if err := verifyImageSignatures(ctx, key, cfg.Verifiers); err != nil {
+				fmt.Printf("error verifying %s: %v\n", key, err)
 				result.Error = err.Error()
 			}
 			results = append(results, result)
@@ -102,10 +103,14 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) error {
+	var hasVerifier bool
+
 	for _, o := range verifiers {
 		if !wildcard.Match(o.Image, key) {
 			continue
 		}
+
+		hasVerifier = true
 
 		ro := options.RegistryOptions{}
 		ociremoteOpts, err := ro.ClientOpts(ctx)
@@ -122,6 +127,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return fmt.Errorf("rekor.NewClient: %v", err)
 			}
 			co.RekorClient = rekorClient
+			fmt.Printf("using rekor url %s to verify %s\n", o.Options.RekorURL, key)
 		}
 		if o.Options.Key != "" {
 			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
@@ -133,6 +139,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				defer pkcs11Key.Close()
 			}
 			co.SigVerifier = pubKey
+			fmt.Printf("using key %s to verify %s\n", o.Options.Key, key)
 		}
 
 		ref, err := name.ParseReference(key)
@@ -155,11 +162,13 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		fmt.Println("signature verified for:", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
-
-		return nil
 	}
 
-	return fmt.Errorf("no verifier found for: %s", key)
+	if !hasVerifier {
+		return fmt.Errorf("no verifier found for: %s", key)
+	}
+
+	return nil
 }
 
 // sendResponse sends back the response to Gatekeeper.
