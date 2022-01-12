@@ -104,12 +104,12 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-type CheckedMetadata struct {
+type checkedMetadata struct {
 	ImageSignatures       []oci.Signature `json:"imageSignatures"`
 	AttestationSignatures []oci.Signature `json:"attestationSignatures"`
 }
 
-func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*CheckedMetadata, error) {
+func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*checkedMetadata, error) {
 	for _, o := range verifiers {
 		if !wildcard.Match(o.Image, key) {
 			continue
@@ -134,7 +134,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		if o.Options.Key != "" {
 			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
 			if err != nil {
-				return nil, fmt.Errorf("PublicKeyFromKeyRef: %v", err)
+				return nil, fmt.Errorf("publicKeyFromKeyRef: %v", err)
 			}
 			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
 			if ok {
@@ -145,14 +145,14 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		ref, err := name.ParseReference(key)
 		if err != nil {
-			return nil, fmt.Errorf("ParseReference: %v", err)
+			return nil, fmt.Errorf("parseReference: %v", err)
 		}
 
-		var metadata *CheckedMetadata
+		var metadata *checkedMetadata
 
 		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 		if err != nil {
-			return nil, fmt.Errorf("VerifyImageSignatures: %v", err)
+			return nil, fmt.Errorf("verifyImageSignatures: %v", err)
 		}
 
 		if co.RekorClient != nil && !bundleVerified {
@@ -173,7 +173,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
 			if err != nil {
-				return nil, fmt.Errorf("VerifyImageAttestations: %v", err)
+				return nil, fmt.Errorf("verifyImageAttestations: %v", err)
 			}
 			if co.RekorClient != nil && !bundleVerified {
 				return nil, fmt.Errorf("no valid attestations found for: %s", key)
