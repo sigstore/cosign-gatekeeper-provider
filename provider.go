@@ -16,13 +16,17 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/in-toto/in-toto-golang/in_toto"
 	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
 
 	"github.com/minio/pkg/wildcard"
@@ -33,6 +37,7 @@ import (
 	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
 	"github.com/sigstore/cosign/pkg/oci"
 	sigs "github.com/sigstore/cosign/pkg/signature"
+	"github.com/sigstore/sigstore/pkg/signature/payload"
 )
 
 const (
@@ -105,8 +110,8 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 }
 
 type checkedMetadata struct {
-	ImageSignatures       []oci.Signature `json:"imageSignatures"`
-	AttestationSignatures []oci.Signature `json:"attestationSignatures"`
+	ImageSignatures       []payload.SimpleContainerImage `json:"imageSignatures"`
+	AttestationSignatures []in_toto.Statement            `json:"attestationSignatures"`
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*checkedMetadata, error) {
@@ -148,7 +153,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			return nil, fmt.Errorf("parseReference: %v", err)
 		}
 
-		var metadata *checkedMetadata
+		metadata := &checkedMetadata{}
 
 		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 		if err != nil {
@@ -163,7 +168,10 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			return nil, fmt.Errorf("no valid signatures found for %s", key)
 		}
 
-		metadata.ImageSignatures = checkedSignatures
+		metadata.ImageSignatures, err = formatSignaturePayloads(checkedSignatures)
+		if err != nil {
+			return nil, fmt.Errorf("formatSignaturePayloads: %v", err)
+		}
 
 		fmt.Println("signature verified for: ", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
@@ -179,7 +187,12 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return nil, fmt.Errorf("no valid attestations found for: %s", key)
 			}
 
-			metadata.AttestationSignatures = checkedAttestations
+			AttestationPayloads, err := formatAttestations(checkedAttestations)
+			if err != nil {
+				return nil, fmt.Errorf("formatAttestations: %v", err)
+			}
+
+			metadata.AttestationSignatures = AttestationPayloads
 
 			fmt.Println("attestation verified for: ", key)
 			fmt.Printf("%d number of valid attestations found for %s, found attestations: %v\n", len(checkedAttestations), key, checkedAttestations)
@@ -189,6 +202,80 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 	}
 
 	return nil, fmt.Errorf("no verifier found for: %s", key)
+}
+
+// formatAttestations takes the payload within an Attestation and base64 decodes it, returning it as an in-toto statement
+func formatAttestations(verifiedAttestations []oci.Signature) ([]in_toto.Statement, error) {
+
+	decodedAttestations := make([]in_toto.Statement, len(verifiedAttestations))
+
+	for i, att := range verifiedAttestations {
+		p, err := att.Payload()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error fetching payload: %v", err)
+			return nil, err
+		}
+
+		var pm map[string]interface{}
+		json.Unmarshal(p, &pm)
+
+		payload := strings.Trim(fmt.Sprintf("%v", pm["payload"]), "\"")
+
+		statementRaw, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error decoding payload: %v", err)
+		}
+
+		var statement in_toto.Statement
+		if err := json.Unmarshal(statementRaw, &statement); err != nil {
+			return nil, err
+		}
+
+		decodedAttestations[i] = statement
+	}
+
+	return decodedAttestations, nil
+
+}
+
+// formatPayload converts the signature into a payload to be sent back to gatekeeper
+func formatSignaturePayloads(verifiedSignatures []oci.Signature) ([]payload.SimpleContainerImage, error) {
+
+	var outputKeys []payload.SimpleContainerImage
+
+	for _, sig := range verifiedSignatures {
+		p, err := sig.Payload()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error fetching payload: %v", err)
+			return nil, err
+		}
+
+		ss := payload.SimpleContainerImage{}
+		if err := json.Unmarshal(p, &ss); err != nil {
+			fmt.Println("error decoding the payload:", err.Error())
+			return nil, err
+		}
+
+		if cert, err := sig.Cert(); err == nil && cert != nil {
+			if ss.Optional == nil {
+				ss.Optional = make(map[string]interface{})
+			}
+			ss.Optional["Subject"] = sigs.CertSubject(cert)
+			if issuerURL := sigs.CertIssuerExtension(cert); issuerURL != "" {
+				ss.Optional["Issuer"] = issuerURL
+			}
+		}
+		if bundle, err := sig.Bundle(); err == nil && bundle != nil {
+			if ss.Optional == nil {
+				ss.Optional = make(map[string]interface{})
+			}
+			ss.Optional["Bundle"] = bundle
+		}
+
+		outputKeys = append(outputKeys, ss)
+	}
+
+	return outputKeys, nil
 }
 
 // sendResponse sends back the response to Gatekeeper.

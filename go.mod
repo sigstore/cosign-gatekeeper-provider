@@ -8,6 +8,7 @@ require (
 	github.com/minio/pkg v1.1.14
 	github.com/open-policy-agent/frameworks/constraint v0.0.0-20211029184625-8b4a99a9a65a
 	github.com/sigstore/cosign v1.4.1
+	github.com/sigstore/sigstore v1.0.2-0.20211203233310-c8e7f70eab4e
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
@@ -149,7 +150,6 @@ require (
 	github.com/shibumi/go-pathspec v1.2.0 // indirect
 	github.com/sigstore/fulcio v0.1.2-0.20211207184413-f4746cc4ff3d // indirect
 	github.com/sigstore/rekor v0.3.1-0.20211203233407-3278f72b78bd // indirect
-	github.com/sigstore/sigstore v1.0.2-0.20211203233310-c8e7f70eab4e // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/spf13/afero v1.6.0 // indirect
