@@ -51,25 +51,33 @@ The provider can be configured with a configuration file passed with the
 `-config-file=<file>` flag.
 
 The verification options for specific image references can be configured by
-defining verifiers.
+defining verifiers for an image reference or image reference pattern. The
+validator iterates over the list of `imageVerifiers` and uses the first
+matching item.
 
-If a matching verifier can't be found then it will return an error for that image
+If a matching item can't be found then it will return an error for that image
 in the response.
 
 ```yaml
-verifiers:
-  # Verify images in the my-project GCR registry with GCP KMS
+imageVerifiers:
+  # Verify images in the my-project GCR registry with GCP KMS and the rekor
+  # server
   - image: "eu.gcr.io/my-project/*"
-    options:
-      key: "gcpkms://projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/my-key"
+    verifiers:
+      - options:
+          key: "gcpkms://projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/my-key"
+      - options:
+          rekorURL: "https://rekor.sigstore.dev"
 
-  # Verify images from my-registry with cosign.pub
+  # Verify images from my-registry with /cosign.pub
   - image: "my-registry:12345/*"
-    options:
-      key: "/cosign.pub"
+    verifiers:
+      - options:
+          key: "/cosign.pub"
 
-  # Verify every image with the rekor server
+  # Verify any other image with the rekor server
   - image: "*"
-    options:
-      rekorURL: "https://rekor.sigstore.dev"
+    verifiers:
+      - options:
+          rekorURL: "https://rekor.sigstore.dev"
 ```

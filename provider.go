@@ -90,11 +90,28 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 			result := externaldata.Item{
 				Key: key,
 			}
-			fmt.Println("verify signature for:", key)
-			if err := verifyImageSignatures(ctx, key, cfg.Verifiers); err != nil {
-				fmt.Printf("error verifying %s: %v\n", key, err)
-				result.Error = err.Error()
+
+			var hasImageVerifier bool
+
+			for _, v := range cfg.ImageVerifiers {
+				if !wildcard.Match(v.Image, key) {
+					continue
+				}
+
+				hasImageVerifier = true
+
+				if err := verifyImageSignatures(ctx, key, v.Verifiers); err != nil {
+					fmt.Printf("error verifying %s: %v\n", key, err)
+					result.Error = err.Error()
+				}
+
+				break
 			}
+
+			if !hasImageVerifier {
+				result.Error = fmt.Sprintf("no image verifier found for: %s", key)
+			}
+
 			results = append(results, result)
 		}
 
@@ -103,15 +120,11 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) error {
-	var hasVerifier bool
+	if len(verifiers) == 0 {
+		return fmt.Errorf("no verifiers provided for: %s", key)
+	}
 
 	for _, o := range verifiers {
-		if !wildcard.Match(o.Image, key) {
-			continue
-		}
-
-		hasVerifier = true
-
 		ro := options.RegistryOptions{}
 		ociremoteOpts, err := ro.ClientOpts(ctx)
 		if err != nil {
@@ -162,10 +175,6 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		fmt.Println("signature verified for:", key)
 		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
-	}
-
-	if !hasVerifier {
-		return fmt.Errorf("no verifier found for: %s", key)
 	}
 
 	return nil
