@@ -26,7 +26,6 @@ spec:
 
         response_with_error(response) {
           count(response.errors) > 0
-          errs := response.errors[_]
         }
 
         response_with_error(response) {
