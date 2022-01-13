@@ -13,11 +13,18 @@ var (
 		RekorURL: "https://rekor.sigstore.dev",
 	}
 
+	// DefaultVerifiers are the default verifiers for an image
+	DefaultVerifiers = []Verifier{
+		{
+			Options: DefaultOptions,
+		},
+	}
+
 	// DefaultConfig is the configuration used when none is provided
 	DefaultConfig = &Config{
-		Verifiers: []Verifier{
+		ImageVerifiers: []ImageVerifier{
 			{
-				Options: DefaultOptions,
+				Verifiers: DefaultVerifiers,
 			},
 		},
 	}
@@ -49,21 +56,45 @@ func LoadConfig(confFile string) (*Config, error) {
 
 // Config configures the provider
 type Config struct {
-	// Verifiers is a list of verifiers. The validator will iterate over
-	// this list until it finds a verifier that matches the image its
-	// validating.
-	Verifiers []Verifier `yaml:"verifiers"`
+	// ImageVerifiers is a list of image verifiers. An image verifier
+	// associates an image reference or pattern with a list of verification
+	// options.
+	ImageVerifiers []ImageVerifier `yaml:"imageVerifiers"`
 }
 
-// Verifier verifies an image
-type Verifier struct {
+// ImageVerifier defines a list of verifiers for a specific image reference or
+// image reference pattern
+type ImageVerifier struct {
 	// Image is an image reference, either to a specific image or a pattern.
 	// Supports '*' and '?' in the pattern string.
 	Image string `yaml:"image,omitempty"`
 
-	// AttestationPresent is a boolean to specify whether an attestation is expected to be present
-	AttestationPresent bool `yaml:"attestationPresent,omitempty"`
+	// Verifiers is a list of verifiers. The validator ensures the image can
+	// be verified by every verifier in the list.
+	Verifiers []Verifier `yaml:"verifiers,omitempty"`
+}
 
+// UnmarshalYAML sets default options for the image verifier when they aren't
+// provided
+func (v *ImageVerifier) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rawVerifier ImageVerifier
+	var raw rawVerifier
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	if len(raw.Verifiers) == 0 {
+		raw.Verifiers = DefaultVerifiers
+	}
+
+	*v = ImageVerifier(raw)
+
+	return nil
+}
+
+// Verifier verifies an image
+type Verifier struct {
+	Verifies []string `yaml:"verifies"`
 	// Options defines verification options
 	Options *CheckOptions `yaml:"options,omitempty"`
 }

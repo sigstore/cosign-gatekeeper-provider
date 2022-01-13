@@ -96,12 +96,31 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 			result := externaldata.Item{
 				Key: key,
 			}
-			fmt.Println("verify signature for:", key)
-			metadata, err := verifyImageSignatures(ctx, key, cfg.Verifiers)
-			if err != nil {
-				result.Error = err.Error()
+
+			var hasImageVerifier bool
+
+			for _, v := range cfg.ImageVerifiers {
+				if !wildcard.Match(v.Image, key) {
+					continue
+				}
+
+				hasImageVerifier = true
+
+				metadata, err := verifyImageSignatures(ctx, key, v.Verifiers)
+				if err != nil {
+					fmt.Printf("error verifying %s: %v\n", key, err)
+					result.Error = err.Error()
+				}
+
+				result.Value = metadata
+
+				break
 			}
-			result.Value = metadata
+
+			if !hasImageVerifier {
+				result.Error = fmt.Sprintf("no image verifier found for: %s", key)
+			}
+
 			results = append(results, result)
 		}
 
@@ -115,11 +134,11 @@ type checkedMetadata struct {
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*checkedMetadata, error) {
-	for _, o := range verifiers {
-		if !wildcard.Match(o.Image, key) {
-			continue
-		}
+	if len(verifiers) == 0 {
+		return nil, fmt.Errorf("no verifiers provided for: %s", key)
+	}
 
+	for _, o := range verifiers {
 		ro := options.RegistryOptions{}
 		ociremoteOpts, err := ro.ClientOpts(ctx)
 		if err != nil {
@@ -135,6 +154,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return nil, fmt.Errorf("rekor.NewClient: %v", err)
 			}
 			co.RekorClient = rekorClient
+			fmt.Printf("using rekor url %s to verify %s\n", o.Options.RekorURL, key)
 		}
 		if o.Options.Key != "" {
 			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
@@ -146,6 +166,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				defer pkcs11Key.Close()
 			}
 			co.SigVerifier = pubKey
+			fmt.Printf("using key %s to verify %s\n", o.Options.Key, key)
 		}
 
 		ref, err := name.ParseReference(key)
@@ -154,29 +175,29 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 		}
 
 		metadata := &checkedMetadata{}
+		if contains(o.Verifies, "imageSignature") {
+			checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
+			if err != nil {
+				return nil, fmt.Errorf("verifyImageSignatures: %v", err)
+			}
 
-		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
-		if err != nil {
-			return nil, fmt.Errorf("verifyImageSignatures: %v", err)
+			if co.RekorClient != nil && !bundleVerified {
+				return nil, fmt.Errorf("no valid signatures found for %s: %v", key, err)
+			}
+
+			if len(checkedSignatures) == 0 {
+				return nil, fmt.Errorf("no valid signatures found for %s", key)
+			}
+
+			metadata.ImageSignatures, err = formatSignaturePayloads(checkedSignatures)
+			if err != nil {
+				return nil, fmt.Errorf("formatSignaturePayloads: %v", err)
+			}
+
+			fmt.Println("signature verified for: ", key)
+			fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
 		}
-
-		if co.RekorClient != nil && !bundleVerified {
-			return nil, fmt.Errorf("no valid signatures found for %s: %v", key, err)
-		}
-
-		if len(checkedSignatures) == 0 {
-			return nil, fmt.Errorf("no valid signatures found for %s", key)
-		}
-
-		metadata.ImageSignatures, err = formatSignaturePayloads(checkedSignatures)
-		if err != nil {
-			return nil, fmt.Errorf("formatSignaturePayloads: %v", err)
-		}
-
-		fmt.Println("signature verified for: ", key)
-		fmt.Printf("%d number of valid signatures found for %s, found signatures: %v\n", len(checkedSignatures), key, checkedSignatures)
-
-		if o.AttestationPresent {
+		if contains(o.Verifies, "attestation") {
 			fmt.Println("Verifying Attestations for image: ", key)
 
 			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
@@ -202,6 +223,16 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 	}
 
 	return nil, fmt.Errorf("no verifier found for: %s", key)
+}
+
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }
 
 // formatAttestations takes the payload within an Attestation and base64 decodes it, returning it as an in-toto statement
