@@ -1,33 +1,48 @@
 apiVersion: templates.gatekeeper.sh/v1beta1
 kind: ConstraintTemplate
 metadata:
-  name: k8sexternaldatacosign
+  name: k8simagescosigned
 spec:
   crd:
     spec:
       names:
-        kind: K8sExternalDataCosign
+        kind: K8sImagesCosigned
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-        package k8sexternaldata
+        package k8simagescosigned
 
+        # ensure that at least one of the signatures is verified
+        verified(value) {
+          value.signatures[_].verified == true
+        }
+
+        # build a list of keys containing images
+        images := [img | img = input.review.object.spec.template.spec.containers[_].image]
+
+        # send external data request
+        response := external_data({"provider": "cosign-gatekeeper-provider", "keys": images})
+
+        # when there is an overall system error
         violation[{"msg": msg}] {
-          # build a list of keys containing images
-          images := [img | img = input.review.object.spec.template.spec.containers[_].image]
-
-          # send external data request
-          response := external_data({"provider": "cosign-gatekeeper-provider", "keys": images})
-
-          response_with_error(response)
-
-          msg := sprintf("response: %v", [response])
-        }
-
-        response_with_error(response) {
-          count(response.errors) > 0
-        }
-
-        response_with_error(response) {
           count(response.system_error) > 0
+          msg := sprintf("system error: %v", [response.system_error])
+        }
+
+        # when there is an error checking one or more of the images
+        violation[{"msg": msg}] {
+          count(response.errors) > 0
+          msg := sprintf("errors: %v", [response.errors])
+        }
+
+        # when there are no verified signatures on the image
+        violation[{"msg": msg}] {
+          resp := response.responses[_]
+
+          image := resp[0]
+          value := resp[1]
+
+          not verified(value)
+
+          msg := sprintf("no verified signatures found for %s", [image])
         }

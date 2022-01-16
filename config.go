@@ -15,9 +15,9 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,11 +36,7 @@ var (
 
 	// DefaultConfig is the configuration used when none is provided
 	DefaultConfig = &Config{
-		ImageVerifiers: []ImageVerifier{
-			{
-				Verifiers: DefaultVerifiers,
-			},
-		},
+		Verifiers: DefaultVerifiers,
 	}
 )
 
@@ -55,14 +51,14 @@ func LoadConfig(confFile string) (*Config, error) {
 
 	yamlReader, err := os.Open(confFile)
 	if err != nil {
-		return c, fmt.Errorf("error reading config file: %s", err)
+		return c, errors.Wrap(err, "reading config file")
 	}
 	defer yamlReader.Close()
 	decoder := yaml.NewDecoder(yamlReader)
 	decoder.KnownFields(true)
 
 	if err = decoder.Decode(&c); err != nil {
-		return c, fmt.Errorf("error parsing config file: %s", err)
+		return c, errors.Wrap(err, "parsing config file")
 	}
 
 	return c, nil
@@ -70,29 +66,14 @@ func LoadConfig(confFile string) (*Config, error) {
 
 // Config configures the provider
 type Config struct {
-	// ImageVerifiers is a list of image verifiers. An image verifier
-	// associates an image reference or pattern with a list of verification
-	// options.
-	ImageVerifiers []ImageVerifier `yaml:"imageVerifiers"`
+	// Verifiers is a list of verifiers used to verify image signatures
+	Verifiers []Verifier `yaml:"verifiers"`
 }
 
-// ImageVerifier defines a list of verifiers for a specific image reference or
-// image reference pattern
-type ImageVerifier struct {
-	// Image is an image reference, either to a specific image or a pattern.
-	// Supports '*' and '?' in the pattern string.
-	Image string `yaml:"image,omitempty"`
-
-	// Verifiers is a list of verifiers. The validator ensures the image can
-	// be verified by every verifier in the list.
-	Verifiers []Verifier `yaml:"verifiers,omitempty"`
-}
-
-// UnmarshalYAML sets default options for the image verifier when they aren't
-// provided
-func (v *ImageVerifier) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type rawVerifier ImageVerifier
-	var raw rawVerifier
+// UnmarshalYAML configures the default verifiers if none are provided
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rawConfig Config
+	var raw rawConfig
 	if err := unmarshal(&raw); err != nil {
 		return err
 	}
@@ -101,12 +82,12 @@ func (v *ImageVerifier) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		raw.Verifiers = DefaultVerifiers
 	}
 
-	*v = ImageVerifier(raw)
+	*c = Config(raw)
 
 	return nil
 }
 
-// Verifier verifies an image
+// Verifier verifies an image signature
 type Verifier struct {
 	// Options defines verification options
 	Options *CheckOptions `yaml:"options,omitempty"`
