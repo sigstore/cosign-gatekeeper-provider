@@ -32,6 +32,8 @@ import (
 	"github.com/sigstore/cosign/pkg/cosign"
 	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
 	sigs "github.com/sigstore/cosign/pkg/signature"
+	rekorclient "github.com/sigstore/rekor/pkg/generated/client"
+	"github.com/sigstore/sigstore/pkg/signature"
 )
 
 const (
@@ -135,17 +137,19 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			RootCerts:          fulcio.GetRoots(),
 		}
 		if o.Options.RekorURL != "" {
-			rekorClient, err := rekor.NewClient(o.Options.RekorURL)
+			var rekorClient *rekorclient.Rekor
+			rekorClient, err = rekor.NewClient(o.Options.RekorURL)
 			if err != nil {
-				return fmt.Errorf("rekor.NewClient: %v", err)
+				return fmt.Errorf("creating rekor client: %v", err)
 			}
 			co.RekorClient = rekorClient
-			fmt.Printf("using rekor url %s to verify %s\n", o.Options.RekorURL, key)
+			fmt.Printf("error using rekor url %s to verify %s\n", o.Options.RekorURL, key)
 		}
 		if o.Options.Key != "" {
-			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
+			var pubKey signature.Verifier
+			pubKey, err = sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
 			if err != nil {
-				return fmt.Errorf("PublicKeyFromKeyRef: %v", err)
+				return fmt.Errorf("error getting public key from key reference: %v", err)
 			}
 			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
 			if ok {
@@ -157,12 +161,12 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		ref, err := name.ParseReference(key)
 		if err != nil {
-			return fmt.Errorf("ParseReference: %v", err)
+			return fmt.Errorf("error parsing image reference: %v", err)
 		}
 
 		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 		if err != nil {
-			return fmt.Errorf("VerifyImageSignatures: %v", err)
+			return fmt.Errorf("error verifying image signatures: %v", err)
 		}
 
 		if co.RekorClient != nil && !bundleVerified {
