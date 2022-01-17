@@ -37,6 +37,8 @@ import (
 	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
 	"github.com/sigstore/cosign/pkg/oci"
 	sigs "github.com/sigstore/cosign/pkg/signature"
+	rekorclient "github.com/sigstore/rekor/pkg/generated/client"
+	"github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/payload"
 )
 
@@ -129,8 +131,8 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 }
 
 type checkedMetadata struct {
-	ImageSignatures       []payload.SimpleContainerImage `json:"imageSignatures"`
-	AttestationSignatures []in_toto.Statement            `json:"attestationSignatures"`
+	Signatures   []payload.SimpleContainerImage `json:"signatures"`
+	Attestations []in_toto.Statement            `json:"attestations"`
 }
 
 func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier) (*checkedMetadata, error) {
@@ -149,17 +151,19 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			RootCerts:          fulcio.GetRoots(),
 		}
 		if o.Options.RekorURL != "" {
-			rekorClient, err := rekor.NewClient(o.Options.RekorURL)
+			var rekorClient *rekorclient.Rekor
+			rekorClient, err = rekor.NewClient(o.Options.RekorURL)
 			if err != nil {
-				return nil, fmt.Errorf("rekor.NewClient: %v", err)
+				return nil, fmt.Errorf("creating rekor client: %v", err)
 			}
 			co.RekorClient = rekorClient
-			fmt.Printf("using rekor url %s to verify %s\n", o.Options.RekorURL, key)
+			fmt.Printf("error using rekor url %s to verify %s\n", o.Options.RekorURL, key)
 		}
 		if o.Options.Key != "" {
-			pubKey, err := sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
+			var pubKey signature.Verifier
+			pubKey, err = sigs.PublicKeyFromKeyRef(ctx, o.Options.Key)
 			if err != nil {
-				return nil, fmt.Errorf("publicKeyFromKeyRef: %v", err)
+				return nil, fmt.Errorf("error getting public key from key reference: %v", err)
 			}
 			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
 			if ok {
@@ -171,14 +175,14 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 		ref, err := name.ParseReference(key)
 		if err != nil {
-			return nil, fmt.Errorf("parseReference: %v", err)
+			return nil, fmt.Errorf("error parsing image reference: %v", err)
 		}
 
 		metadata := &checkedMetadata{}
 		if contains(o.Verifies, "imageSignature") {
 			checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, co)
 			if err != nil {
-				return nil, fmt.Errorf("verifyImageSignatures: %v", err)
+				return nil, fmt.Errorf("error verifying image signatures: %v", err)
 			}
 
 			if co.RekorClient != nil && !bundleVerified {
@@ -189,9 +193,9 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return nil, fmt.Errorf("no valid signatures found for %s", key)
 			}
 
-			metadata.ImageSignatures, err = formatSignaturePayloads(checkedSignatures)
+			metadata.Signatures, err = formatSignaturePayloads(checkedSignatures)
 			if err != nil {
-				return nil, fmt.Errorf("formatSignaturePayloads: %v", err)
+				return nil, fmt.Errorf("error formatting signature payload: %v", err)
 			}
 
 			fmt.Println("signature verified for: ", key)
@@ -202,7 +206,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 
 			checkedAttestations, bundleVerified, err := cosign.VerifyImageAttestations(ctx, ref, co)
 			if err != nil {
-				return nil, fmt.Errorf("verifyImageAttestations: %v", err)
+				return nil, fmt.Errorf("error verifying attestations: %v", err)
 			}
 			if co.RekorClient != nil && !bundleVerified {
 				return nil, fmt.Errorf("no valid attestations found for: %s", key)
@@ -213,7 +217,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return nil, fmt.Errorf("formatAttestations: %v", err)
 			}
 
-			metadata.AttestationSignatures = AttestationPayloads
+			metadata.Attestations = AttestationPayloads
 
 			fmt.Println("attestation verified for: ", key)
 			fmt.Printf("%d number of valid attestations found for %s, found attestations: %v\n", len(checkedAttestations), key, checkedAttestations)
@@ -254,7 +258,7 @@ func formatAttestations(verifiedAttestations []oci.Signature) ([]in_toto.Stateme
 
 		statementRaw, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error decoding payload: %v", err)
+			fmt.Fprintf(os.Stderr, "error decoding attestation payload: %v", err)
 		}
 
 		var statement in_toto.Statement
