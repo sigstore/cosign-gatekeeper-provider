@@ -30,7 +30,7 @@ FROM $BASEIMAGE
 
 WORKDIR /
 
-COPY --from=builder /go/src/github.com/developer-guy/cosign-gatekeeper-provider .
+COPY --from=builder /go/src/github.com/developer-guy/cosign-gatekeeper-provider/provider .
 
 USER 65532:65532
 
