@@ -1,5 +1,5 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sExternalDataCosign
+kind: K8sImagesCosigned
 metadata:
   name: cosign-gatekeeper-provider
 spec:

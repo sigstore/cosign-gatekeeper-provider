@@ -24,13 +24,13 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o provider provider.go
+RUN go build -o provider .
 
 FROM $BASEIMAGE
 
 WORKDIR /
 
-COPY --from=builder /go/src/github.com/developer-guy/cosign-gatekeeper-provider .
+COPY --from=builder /go/src/github.com/developer-guy/cosign-gatekeeper-provider/provider .
 
 USER 65532:65532
 
