@@ -44,3 +44,40 @@ $ cosign sign --key cosign.key devopps/signed:latest
 ```
 
 So, once you are ready, let's apply these manifests one by one. It should allow deploying Pod for valid.yaml, and deny for the other one.
+
+## Configuration
+
+The provider can be configured with a configuration file passed with the
+`-config-file=<file>` flag.
+
+The verification options for specific image references can be configured by
+defining verifiers for an image reference or image reference pattern. The
+validator iterates over the list of `imageVerifiers` and uses the first
+matching item.
+
+If a matching item can't be found then it will return an error for that image
+in the response.
+
+```yaml
+imageVerifiers:
+  # Verify images in the my-project GCR registry with GCP KMS and the rekor
+  # server
+  - image: "eu.gcr.io/my-project/*"
+    verifiers:
+      - options:
+          key: "gcpkms://projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/my-key"
+      - options:
+          rekorURL: "https://rekor.sigstore.dev"
+
+  # Verify images from my-registry with /cosign.pub
+  - image: "my-registry:12345/*"
+    verifiers:
+      - options:
+          key: "/cosign.pub"
+
+  # Verify any other image with the rekor server
+  - image: "*"
+    verifiers:
+      - options:
+          rekorURL: "https://rekor.sigstore.dev"
+```

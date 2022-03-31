@@ -24,7 +24,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o provider provider.go
+RUN go build -o provider .
 
 FROM $BASEIMAGE
 
