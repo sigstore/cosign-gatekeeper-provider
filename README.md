@@ -1,5 +1,5 @@
 # cosign-gatekeeper-provider
-To integrate [OPA Gatekeeper's new ExternalData feature](https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata) with [cosign](github.com/sigstore/cosign) to determine whether the images  are valid by verifying its signatures
+To integrate [OPA Gatekeeper's new ExternalData feature](https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata) with [cosign](https://github.com/sigstore/cosign) to determine whether the images are valid by verifying its signatures.
 
 > This repo is meant for testing Gatekeeper external data feature. Do not use for production.
 
@@ -17,10 +17,10 @@ helm install gatekeeper/gatekeeper  \
 
 Let's install the `cosign-gatekeeper-provider`:
 
- `kubectl apply -f manifest`
+- `kubectl apply -f manifest`
 
 - `kubectl apply -f manifest/provider.yaml`
-  - > Update `url` if it's not `http://cosign-gatekeeper-provider.cosign-gatekeeper-provider:8090` (default)
+  > Update `url` if it's not `http://cosign-gatekeeper-provider.cosign-gatekeeper-provider:8090` (default)
 
 - `kubectl apply -f policy/template.yaml`
 
