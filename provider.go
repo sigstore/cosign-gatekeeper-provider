@@ -15,13 +15,17 @@
 package main
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
+	"github.com/sigstore/cosign/cmd/cosign/cli/rekor"
+	"github.com/sigstore/rekor/pkg/generated/client"
 
 	"github.com/sigstore/cosign/cmd/cosign/cli/fulcio"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -30,15 +34,31 @@ import (
 
 const (
 	apiVersion = "externaldata.gatekeeper.sh/v1alpha1"
+	rekorURL   = "https://rekor.sigstore.dev"
+)
+
+var (
+	rekorClient *client.Rekor
+	rootCerts   *x509.CertPool
 )
 
 func main() {
+	rc, err := rekor.NewClient(rekorURL)
+	if err != nil {
+		log.Fatalf("creating Rekor client: %v", err)
+	}
+	rekorClient = rc
+
+	roots, err := fulcio.GetRoots()
+	if err != nil {
+		log.Fatalf("getting root certs: %v", err)
+	}
+	rootCerts = roots
+
 	fmt.Println("starting server...")
 	http.HandleFunc("/validate", validate)
 
-	if err := http.ListenAndServe(":8090", nil); err != nil {
-		panic(err)
-	}
+	log.Fatal(http.ListenAndServe(":8090", nil))
 }
 
 func validate(w http.ResponseWriter, req *http.Request) {
@@ -83,9 +103,9 @@ func validate(w http.ResponseWriter, req *http.Request) {
 		}
 
 		checkedSignatures, bundleVerified, err := cosign.VerifyImageSignatures(ctx, ref, &cosign.CheckOpts{
-			RekorURL:           "https://rekor.sigstore.dev",
+			RekorClient:        rekorClient,
 			RegistryClientOpts: co,
-			RootCerts:          fulcio.GetRoots(),
+			RootCerts:          rootCerts,
 		})
 
 		if err != nil {
@@ -126,8 +146,11 @@ func sendResponse(results *[]externaldata.Item, systemErr string, w http.Respons
 		response.Response.SystemError = systemErr
 	}
 
-	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		panic(err)
+		w.WriteHeader(http.StatusForbidden)
+		response.Response.SystemError = err.Error()
+		return
 	}
+
+	w.WriteHeader(http.StatusOK)
 }
