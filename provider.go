@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
@@ -36,7 +37,14 @@ func main() {
 	fmt.Println("starting server...")
 	http.HandleFunc("/validate", validate)
 
-	if err := http.ListenAndServe(":8090", nil); err != nil {
+	srv := &http.Server{
+		Addr:              ":8090",
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
