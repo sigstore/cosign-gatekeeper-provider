@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	apiVersion = "externaldata.gatekeeper.sh/v1alpha1"
+	apiVersion      = "externaldata.gatekeeper.sh/v1alpha1"
 	defaultRekorURL = "https://rekor.sigstore.dev"
 )
 
@@ -100,7 +100,7 @@ func validate(w http.ResponseWriter, req *http.Request) {
 		sendResponse(nil, fmt.Sprintf("getting Fulcio intermediates: %v", err), w)
 		return
 	}
-	
+
 	// iterate over all keys
 	for _, key := range providerRequest.Request.Keys {
 		fmt.Println("verify signature for:", key)
