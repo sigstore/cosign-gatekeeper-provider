@@ -1,6 +1,6 @@
 module github.com/sigstore/cosign-gatekeeper-provider
 
-go 1.17
+go 1.20
 
 require (
 	github.com/google/go-containerregistry v0.6.1-0.20210922191434-34b7f00d7a60
