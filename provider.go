@@ -15,6 +15,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -28,6 +29,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/rekor"
 	"github.com/sigstore/cosign/pkg/cosign"
+	"github.com/sigstore/rekor/pkg/generated/client"
 )
 
 const (
@@ -35,9 +37,33 @@ const (
 	defaultRekorURL = "https://rekor.sigstore.dev"
 )
 
+var (
+	rekorClient 		*client.Rekor
+	fulcioRoots 		*x509.CertPool
+	fulcioIntermediates 	*x509.CertPool
+)
+
 func main() {
 	fmt.Println("starting server...")
 	http.HandleFunc("/validate", validate)
+
+	rc, err := rekor.NewClient(defaultRekorURL)
+	if err != nil {
+		panic(fmt.Sprintf("creating Rekor client: %v", err))
+	}
+	rekorClient = rc
+
+	roots, err := fulcio.GetRoots()
+	if err != nil {
+		panic(fmt.Sprintf("getting Fulcio root certs: %v", err))
+	}
+	fulcioRoots = roots
+
+	intermediates, err := fulcio.GetIntermediates()
+	if err != nil {
+		panic(fmt.Sprintf("getting Fulcio intermediates certs: %v", err))
+	}
+	fulcioIntermediates = intermediates
 
 	srv := &http.Server{
 		Addr:              ":8090",
@@ -80,24 +106,6 @@ func validate(w http.ResponseWriter, req *http.Request) {
 	co, err := ro.ClientOpts(ctx)
 	if err != nil {
 		sendResponse(nil, fmt.Sprintf("ERROR: %v", err), w)
-		return
-	}
-
-	rekorClient, err := rekor.NewClient(defaultRekorURL)
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("creating Rekor client: %v", err), w)
-		return
-	}
-
-	fulcioRoots, err := fulcio.GetRoots()
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("getting root certs: %v", err), w)
-		return
-	}
-
-	fulcioIntermediates, err := fulcio.GetIntermediates()
-	if err != nil {
-		sendResponse(nil, fmt.Sprintf("getting Fulcio intermediates: %v", err), w)
 		return
 	}
 
