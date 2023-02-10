@@ -38,9 +38,9 @@ const (
 )
 
 var (
-	rekorClient 		*client.Rekor
-	fulcioRoots 		*x509.CertPool
-	fulcioIntermediates 	*x509.CertPool
+	rekorClient         *client.Rekor
+	fulcioRoots         *x509.CertPool
+	fulcioIntermediates *x509.CertPool
 )
 
 func main() {
