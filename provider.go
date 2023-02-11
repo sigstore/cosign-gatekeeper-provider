@@ -18,7 +18,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -85,7 +85,7 @@ func validate(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// read request body
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		sendResponse(nil, fmt.Sprintf("unable to read request body: %v", err), w)
 		return
