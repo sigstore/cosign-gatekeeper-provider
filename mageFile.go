@@ -100,13 +100,13 @@ func Test() error {
 }
 
 func Build() error {
-	return sh.RunV("goreleaser", "release", "--rm-dist", "--snapshot", "--skip-sign", "--skip-publish")
+	return sh.RunV("goreleaser", "release", "--clean", "--snapshot", "--skip-sign", "--skip-publish")
 }
 
 func Release() error {
 	mg.Deps(Test)
 
-	return sh.RunV("goreleaser", "release", "--rm-dist")
+	return sh.RunV("goreleaser", "release", "--clean")
 }
 
 func Clean() {

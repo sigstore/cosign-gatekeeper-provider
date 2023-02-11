@@ -10,6 +10,7 @@ env:
 before:
   hooks:
     - go mod tidy
+    - /bin/bash -c 'if [ -n "$(git --no-pager diff --exit-code go.mod go.sum)" ]; then exit 1; fi'
 
 gomod:
   proxy: true
@@ -21,6 +22,7 @@ builds:
     mod_timestamp: '{{ .CommitTimestamp }}'
     goos:
       - linux
+      - darwin
     goarch:
       - amd64
       - arm64
