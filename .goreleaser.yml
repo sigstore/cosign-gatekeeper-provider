@@ -15,11 +15,15 @@ before:
 gomod:
   proxy: true
 
+sboms:
+  - artifacts: binary
+
 builds:
   - main: .
     flags:
       - -trimpath
     mod_timestamp: '{{ .CommitTimestamp }}'
+    binary: cosign-gatekeeper-provider-{{ .Os }}-{{ .Arch }}
     goos:
       - linux
       - darwin
@@ -33,6 +37,37 @@ builds:
       - '7'
     env:
       - CGO_ENABLED=0
+
+kos:
+  - repository: ghcr.io/sigstore/cosign-gatekeeper-provider
+    tags:
+      - 'v{{.Version}}'
+    main: .
+    bare: true
+    preserve_import_paths: false
+    sbom: spdx
+    base_image: cgr.dev/chainguard/static:latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+      - linux/s390x
+      - linux/ppc64le
+      - linux/arm
+
+signs:
+  # Keyless
+  - id: binary
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    cmd: cosign
+    args: ["sign-blob", "--output-signature", "${artifact}.sig", "--output-certificate", "${artifact}.pem", "${artifact}"]
+    artifacts: binary
+  - id: checksum-keyless
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    cmd: cosign
+    args: ["sign-blob", "--output-signature", "${artifact}.sig", "--output-certificate", "${artifact}.pem", "${artifact}"]
+    artifacts: checksum
 
 archives:
   - format: binary
