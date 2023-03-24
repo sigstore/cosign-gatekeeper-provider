@@ -15,39 +15,49 @@
 package main
 
 import (
-	"context"
-	"encoding/base64"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"github.com/in-toto/in-toto-golang/in_toto"
+	"io"
 	"net/http"
+	"time"
+
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
+
+	"github.com/sigstore/rekor/pkg/generated/client"
+
+	"context"
+	"encoding/base64"
 	"os"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/in-toto/in-toto-golang/in_toto"
-	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
-
 	"github.com/minio/pkg/wildcard"
-	"github.com/sigstore/cosign/cmd/cosign/cli/fulcio"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/rekor"
-	"github.com/sigstore/cosign/pkg/cosign"
-	"github.com/sigstore/cosign/pkg/cosign/pkcs11key"
-	"github.com/sigstore/cosign/pkg/oci"
-	sigs "github.com/sigstore/cosign/pkg/signature"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/fulcio"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/rekor"
+	"github.com/sigstore/cosign/v2/pkg/cosign"
+	"github.com/sigstore/cosign/v2/pkg/cosign/pkcs11key"
+	"github.com/sigstore/cosign/v2/pkg/oci"
+	sigs "github.com/sigstore/cosign/v2/pkg/signature"
 	rekorclient "github.com/sigstore/rekor/pkg/generated/client"
 	"github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/payload"
 )
 
 const (
-	apiVersion = "externaldata.gatekeeper.sh/v1alpha1"
+	apiVersion      = "externaldata.gatekeeper.sh/v1alpha1"
+	defaultRekorURL = "https://rekor.sigstore.dev"
 )
 
 var (
-	configFile = flag.String("config-file", "", "path to a configuration file")
+	rekorClient         *client.Rekor
+	fulcioRoots         *x509.CertPool
+	fulcioIntermediates *x509.CertPool
+	rekorURL            = flag.String("rekor-url", defaultRekorURL, "specify Rekor URL")
+	configFile          = flag.String("config-file", "", "path to a configuration file")
 )
 
 func main() {
@@ -61,7 +71,32 @@ func main() {
 	fmt.Println("starting server...")
 	http.HandleFunc("/validate", validate(cfg))
 
-	if err := http.ListenAndServe(":8090", nil); err != nil {
+	rc, err := rekor.NewClient(*rekorURL)
+	if err != nil {
+		panic(fmt.Sprintf("creating Rekor client: %v", err))
+	}
+	rekorClient = rc
+
+	roots, err := fulcio.GetRoots()
+	if err != nil {
+		panic(fmt.Sprintf("getting Fulcio root certs: %v", err))
+	}
+	fulcioRoots = roots
+
+	intermediates, err := fulcio.GetIntermediates()
+	if err != nil {
+		panic(fmt.Sprintf("getting Fulcio intermediates certs: %v", err))
+	}
+	fulcioIntermediates = intermediates
+
+	srv := &http.Server{
+		Addr:              ":8090",
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
@@ -75,12 +110,11 @@ func validate(cfg *Config) func(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// read request body
-		requestBody, err := ioutil.ReadAll(req.Body)
+		requestBody, err := io.ReadAll(req.Body)
 		if err != nil {
 			sendResponse(nil, fmt.Sprintf("unable to read request body: %v", err), w)
 			return
 		}
-
 		// parse request body
 		var providerRequest externaldata.ProviderRequest
 		err = json.Unmarshal(requestBody, &providerRequest)
@@ -147,8 +181,11 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 			return nil, err
 		}
 		co := &cosign.CheckOpts{
+			RekorClient:        rekorClient,
 			RegistryClientOpts: ociremoteOpts,
-			RootCerts:          fulcio.GetRoots(),
+			RootCerts:          fulcioRoots,
+			IntermediateCerts:  fulcioIntermediates,
+			ClaimVerifier:      cosign.SimpleClaimVerifier,
 		}
 		if o.Options.RekorURL != "" {
 			var rekorClient *rekorclient.Rekor
@@ -157,7 +194,7 @@ func verifyImageSignatures(ctx context.Context, key string, verifiers []Verifier
 				return nil, fmt.Errorf("creating rekor client: %v", err)
 			}
 			co.RekorClient = rekorClient
-			fmt.Printf("error using rekor url %s to verify %s\n", o.Options.RekorURL, key)
+			fmt.Printf("using key specific rekor url %s to verify %s\n", o.Options.RekorURL, key)
 		}
 		if o.Options.Key != "" {
 			var pubKey signature.Verifier
@@ -296,7 +333,8 @@ func formatSignaturePayloads(verifiedSignatures []oci.Signature) ([]payload.Simp
 				ss.Optional = make(map[string]interface{})
 			}
 			ss.Optional["Subject"] = sigs.CertSubject(cert)
-			if issuerURL := sigs.CertIssuerExtension(cert); issuerURL != "" {
+			ce := cosign.CertExtensions{Cert: cert}
+			if issuerURL := ce.GetIssuer(); issuerURL != "" {
 				ss.Optional["Issuer"] = issuerURL
 			}
 		}

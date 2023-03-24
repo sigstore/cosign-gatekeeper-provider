@@ -23,9 +23,7 @@ import (
 
 var (
 	// DefaultOptions are the default verification options
-	DefaultOptions = &CheckOptions{
-		RekorURL: "https://rekor.sigstore.dev",
-	}
+	DefaultOptions = &CheckOptions{}
 
 	// DefaultVerifiers are the default verifiers for an image
 	DefaultVerifiers = []Verifier{
