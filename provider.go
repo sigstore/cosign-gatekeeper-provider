@@ -17,6 +17,7 @@ package main
 import (
 	"crypto/x509"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,13 +42,16 @@ var (
 	rekorClient         *client.Rekor
 	fulcioRoots         *x509.CertPool
 	fulcioIntermediates *x509.CertPool
+	rekorURL            = flag.String("rekor-url", defaultRekorURL, "specify Rekor URL")
 )
 
 func main() {
+	flag.Parse()
+
 	fmt.Println("starting server...")
 	http.HandleFunc("/validate", validate)
 
-	rc, err := rekor.NewClient(defaultRekorURL)
+	rc, err := rekor.NewClient(*rekorURL)
 	if err != nil {
 		panic(fmt.Sprintf("creating Rekor client: %v", err))
 	}
