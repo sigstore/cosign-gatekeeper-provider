@@ -21,13 +21,11 @@ spec:
 
           response_with_error(response)
 
-          msg := sprintf("invalid response: %v", [response])
+          msg := sprintf("response: %v", [response])
         }
 
         response_with_error(response) {
           count(response.errors) > 0
-          errs := response.errors[_]
-          contains(errs[1], "_invalid")
         }
 
         response_with_error(response) {
