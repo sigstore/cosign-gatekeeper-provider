@@ -28,7 +28,7 @@ jobs:
           go-version: '1.20'
           check-latest: true
 
-      - uses: sigstore/cosign-installer@4079ad3567a89f68395480299c77e40170430341
+      - uses: sigstore/cosign-installer@66dd3f388647c8d36a2b8b27371cce115a10e003
       - uses: anchore/sbom-action/download-syft@422cb34a0f8b599678c41b21163ea6088edb2624 # v0.14.1
       - uses: ko-build/setup-ko@ace48d793556083a76f1e3e6068850c1f4a369aa # v0.6
       - uses: imjasonh/setup-crane@e82f1b9a8007d399333baba4d75915558e9fb6a4 # v0.2
