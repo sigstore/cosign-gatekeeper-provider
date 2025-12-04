@@ -1,4 +1,11 @@
 # cosign-gatekeeper-provider
+
+## Status
+
+This project has been archived; an alternative project which is interoperable with Sigstore's Public Good Infrastructure is [https://github.com/github/artifact-attestations-opa-provider](https://github.com/github/artifact-attestations-opa-provider).
+
+## Overview
+
 To integrate [OPA Gatekeeper's new ExternalData feature](https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata) with [cosign](https://github.com/sigstore/cosign) to determine whether the images are valid by verifying its signatures.
 
 > This repo is meant for testing Gatekeeper external data feature. Do not use for production.
